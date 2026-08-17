@@ -117,6 +117,35 @@ jobs:
               fi
             done
           fi
+          
+          # Scheduled runs: if today's report already exists, stop here.
+          # Manual workflow_dispatch has already exited above, so it can still force rebuild.
+          if [ "$day_match" = "true" ]; then
+            TODAY=$(TZ="$TZ_VAL" date +%Y-%m-%d)
+            CHECK_URL="https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/${TODAY}/${TODAY}.html?ref=gh-pages"
+
+            HTTP_CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
+              -H "Authorization: Bearer ${GH_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$CHECK_URL" || true)
+
+            case "$HTTP_CODE" in
+              200)
+                echo "Today's report ($TODAY) already exists — skipping"
+                echo "should-run=false" >> "$GITHUB_OUTPUT"
+                exit 0
+                ;;
+              404)
+                echo "Today's report is absent — continuing"
+                ;;
+              *)
+                echo "Unable to check today's report: HTTP $HTTP_CODE"
+                exit 1
+                ;;
+            esac
+          fi
+
 
           # Catchup branch — covers GitHub Actions silently dropping scheduled
           # triggers (which happens to ~30% of cron runs, especially at the
